@@ -262,6 +262,14 @@ def main():
     intrusion_count = 0
     last_frame = None
 
+    # 스크린샷 저장 폴더 생성 (프로젝트 폴더 안에 intrusion_shots/)
+    screenshot_dir = Path("intrusion_shots")
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 누적 침입 횟수 & 마지막 프레임 저장용
+    intrusion_count = 0
+    last_frame = None
+
     # supervision이 설치되어 있어도, ROI 색 구분을 위해
     # 여기서는 OpenCV 직접 그리기를 기본으로 사용.
     if HAS_SV:
@@ -399,10 +407,18 @@ def main():
                     prev_inside = id_inside_state.get(tid, False)
                     if inside and not prev_inside:
                         intrusion_count += 1    # 누적 침입 횟수 증가
+                        
+                        # 스크린샷 파일 이름 만들기
+                        screenshot_path = screenshot_dir / f"intrusion_{intrusion_count:04d}.jpg"
+
+                        # 현재 프레임을 저장 (박스/텍스트가 그려진 상태로 저장하고 싶으면 frame 사용)
+                        cv2.imwrite(str(screenshot_path), frame.copy())
+                        
                         logging.info(
                             f"⚠️ ROI 침입 감지 - ID {tid}, 클래스 {class_name}, "
-                            f"중심 ({cx}, {cy})"
+                            f"중심 ({cx}, {cy}) | 저장: {screenshot_path}"
                         )
+                        
                     id_inside_state[tid] = inside
 
         # -----------------------
@@ -434,154 +450,6 @@ def main():
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 0, 255),   # 빨간색 글씨
-            2,
-        )
-
-        # 저장 옵션이 있다면, 첫 프레임에서 writer 생성
-        if args.save and writer is None:
-            guessed_fps = 30  # 입력 FPS를 모르면 대략 30으로 가정
-            writer = open_writer(frame, args.save, fps=guessed_fps)
-
-        # -----------------------
-        #  프레임 표시 / 저장
-        # -----------------------
-        if args.show:
-            cv2.imshow(window_name, frame)
-            # ESC 키 누르면 종료
-            if cv2.waitKey(1) & 0xFF == 27:
-                break
-
-        if writer is not None:
-            writer.write(frame)
-        frame = result.orig_img
-        if frame is None:
-            continue
-
-        # FPS 계산 (지수 이동 평균을 사용해 조금 부드럽게)
-        now = time.time()
-        fps = 0.9 * fps + 0.1 * (1.0 / max(now - last_time, 1e-6))
-        last_time = now
-
-        # -----------------------
-        #  ROI 화면에 그리기
-        # -----------------------
-        if args.show:
-            # 찍힌 ROI 점이 있다면 점 + 선/다각형을 그려준다.
-            if roi_points:
-                # 각 점을 작은 원으로 표시
-                for p in roi_points:
-                    cv2.circle(frame, p, 4, (255, 0, 0), -1)
-
-                pts = np.array(roi_points, np.int32)
-                if len(pts) >= 2:
-                    # roi_finalized=True 이면 닫힌 다각형, False면 열린 폴리라인
-                    cv2.polylines(frame, [pts], roi_finalized, (255, 0, 0), 2)
-
-            # ROI 사용법 안내 문구
-            if not roi_finalized:
-                msg = "L-Click: add ROI point  |  R-Click: finalize ROI"
-            else:
-                msg = "ROI fixed"
-            cv2.putText(
-                frame,
-                msg,
-                (10, 50),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (200, 200, 255),
-                2,
-            )
-
-        # -----------------------
-        #  YOLO 추적 결과 처리
-        # -----------------------
-        boxes = result.boxes
-        if boxes is not None and len(boxes) > 0:
-            # 첫 프레임에 탐지된 객체 개수 로깅
-            if i == 0:
-                logging.info(f"첫 번째 프레임에서 {len(boxes)}개 객체 탐지")
-
-            # tensor -> numpy 로 변환
-            xyxy = boxes.xyxy.cpu().numpy()
-            confs = (
-                boxes.conf.cpu().numpy()
-                if boxes.conf is not None
-                else np.zeros(len(xyxy))
-            )
-            clss = (
-                boxes.cls.cpu().numpy().astype(int)
-                if boxes.cls is not None
-                else np.zeros(len(xyxy), dtype=int)
-            )
-            ids = (
-                boxes.id.cpu().numpy().astype(int)
-                if boxes.id is not None
-                else np.array([-1] * len(xyxy), dtype=int)
-            )
-
-            # 30프레임마다 현재 활성 트랙 ID 로그
-            if i % 30 == 0 and len(ids) > 0:
-                active_ids = [tid for tid in ids if tid != -1]
-                logging.info(f"활성 트래킹 ID: {active_ids} (총 {len(active_ids)}개)")
-
-            # ===== 박스 그리기 + ROI 침입 여부 체크 =====
-            for (x1, y1, x2, y2), cid, conf, tid in zip(xyxy, clss, confs, ids):
-                x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
-
-                # 바운딩 박스 중심점 계산
-                cx = int((x1 + x2) / 2)
-                cy = int((y1 + y2) / 2)
-
-                # ROI가 확정된 상태라면, 중심점이 ROI 내부인지 검사
-                inside = roi_finalized and is_inside_roi((cx, cy), roi_points)
-
-                # ROI 안: 빨간색, 밖: 초록색
-                color = (0, 255, 0)
-                if inside:
-                    color = (0, 0, 255)
-
-                # 바운딩 박스 & 중심점 표시
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.circle(frame, (cx, cy), 3, color, -1)
-
-                # 클래스 이름 가져오기 (없으면 id 그대로)
-                class_name = model.model.names.get(cid, str(cid))
-
-                # 라벨 텍스트 구성 (ROI 안일 경우 [IN] 표시)
-                label = f"ID {tid} | {class_name} {conf:.2f}"
-                if inside:
-                    label += " [IN]"
-
-                cv2.putText(
-                    frame,
-                    label,
-                    (x1, max(0, y1 - 7)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    color,
-                    2,
-                )
-
-                # ----- 침입 이벤트 로그 -----
-                # track id가 유효하고, "밖 → 안"으로 바뀌는 순간에만 로그를 남김
-                if tid is not None and tid != -1:
-                    prev_inside = id_inside_state.get(tid, False)
-                    if inside and not prev_inside:
-                        logging.info(
-                            f"⚠️ ROI 침입 감지 - ID {tid}, 클래스 {class_name}, "
-                            f"중심 ({cx}, {cy})"
-                        )
-                    # 현재 상태를 저장 (다음 프레임 비교용)
-                    id_inside_state[tid] = inside
-
-        # 좌상단에 FPS 및 사용 중인 모델/트래커 정보 표시
-        cv2.putText(
-            frame,
-            f"FPS: {fps:.1f} | Model: {args.model} | Tracker: {args.tracker}",
-            (10, 24),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (50, 230, 50),
             2,
         )
 

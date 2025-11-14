@@ -9,8 +9,8 @@ app = FastAPI()
 
 # 카메라 대신, 이미 처리된 frame 을 만들고 싶다면
 # 아래 cap 부분 대신, 직접 frame을 만드는 코드로 바꾸면 됩니다.
-cap = cv2.VideoCapture("/home/aa/smart_city_2025/data/vtest.avi")  # 0: 기본 웹캠. 필요 없으면 제거 가능.
-
+cap = cv2.VideoCapture(0)  # 0: 기본 웹캠. 필요 없으면 제거 가능.
+cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 
 def gen_frames():
     while True:

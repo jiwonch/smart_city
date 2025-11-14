@@ -1,0 +1,25 @@
+# ByteTrack 트래커 설정
+tracker_type: bytetrack
+
+# ByteTrack 주요 매개변수
+track_thresh: 0.6 # 트래킹 신뢰도 임계값
+track_high_thresh: 0.6 # 높은 신뢰도 임계값
+track_low_thresh: 0.1 # 낮은 신뢰도 임계값
+new_track_thresh: 0.7 # 새 트랙 생성 임계값
+track_buffer: 30 # 손실된 트랙을 유지하는 프레임 수
+match_thresh: 0.8 # 트래킹 매칭 임계값
+frame_rate: 30 # 비디오 시퀀스의 FPS
+fuse_score: false # 점수 융합 비활성화
+
+# 모션 모델 매개변수
+kalman_format: "default" # 칼만 필터 형식
+motion: "KalmanFilterXYAH" # 모션 모델
+
+# 재식별(Re-identification) 매개변수
+with_reid: false # ReID 사용 여부
+proximity_thresh: 0.5 # 공간적 근접성 임계값
+appearance_thresh: 0.25 # 외형 유사성 임계값
+
+# 탐지 매개변수
+min_box_area: 10 # 작은 박스 필터링
+aspect_ratio_thresh: 1.6 # 종횡비 임계값
